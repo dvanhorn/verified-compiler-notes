@@ -43,6 +43,7 @@ jobs:
         with:
           root_file: main.tex
           working_directory: _out/tex
+          compiler: latexmk
           latexmk_use_lualatex: true
 
       - name: Upload PDF artifact
