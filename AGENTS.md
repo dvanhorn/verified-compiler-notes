@@ -41,11 +41,19 @@ This is a Lean + Verso documentation project built from the Verso `textbook` tem
 - Use `https://github.com/leanprover/verso-templates` as the primary reference for supported Verso authoring patterns and template examples before adding local extensions.
 - Use `savedLean`/`savedImport` where example code extraction is intended.
 - Prefer small, self-contained semantic chapters that remain compilation-checkable.
-- For rendered mathematics in chapter text, use native Verso math syntax wrapped in backticks: `` `$...$` `` for inline math and `` `$$...$$` `` for display math.
+- For rendered mathematics use: `` $`...` `` for inline math and `` $$`...` `` for display math.
+- For bibliographic citations, define reference entries in `VerifiedCompilerNotes/References.lean` using Verso bibliography value types such as `InProceedings`, `Article`, and `Thesis`, import that module into the chapter, and cite with inline roles such as `{citet refName}[]`. Treat `VerifiedCompilerNotes/References.lean` as the source of truth for reusable citations.
+- Citation role guidance:
+  - Prefer `{citet refName}[]` for citations that should read naturally as part of prose.
+  - Prefer `{citep refName}[]` for parenthetical citations.
+  - Use `{citehere refName}[]` only when literal inline bibliographic text is desired.
+- Do not insert line breaks inside citation syntax: keep `{citet refName}[]`, `{citep refName}[]`, and `{citehere refName}[]` on one line exactly.
+- Prefer `{margin}[...]` for brief asides or side remarks when a marginal note is more appropriate than interrupting the main prose flow.
 - KaTeX syntax support reference:
   - Supported functions: `https://katex.org/docs/supported`
   - Support table: `https://katex.org/docs/support_table`
 - For Lean snippets that must elaborate earlier but be displayed later, prefer the local `sharedLean (snippet := "...")` and `replayLean (snippet := "...")` blocks from `VerifiedCompilerNotes.Meta.Lean`.
+- For historical claims about the origin of semantic styles, prefer primary or near-primary sources where possible. Good secondary framing sources in this repo's current style include Plotkin's retrospective on SOS and Hutton and Wu's tutorial paper.
 
 ## Operational Notes (from current session)
 - Chapter source currently in `VerifiedCompilerNotes/Semantics.lean` uses only definitions and no theorem proofs.
@@ -53,3 +61,4 @@ This is a Lean + Verso documentation project built from the Verso `textbook` tem
 - `VerifiedCompilerNotes.Meta.Lean` now defines reusable local Verso extensions:
   - `sharedLean` / `replayLean` for “define once, display later” Lean snippets
 - `VerifiedCompilerNotes/Semantics.lean` imports `VerifiedCompilerNotes.Meta.Lean` directly so these local blocks are available during chapter elaboration.
+- After syntax-sensitive edits involving Verso math delimiters, citation roles, section metadata, or custom block syntax, rebuild promptly to catch parser-level failures early.
