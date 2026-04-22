@@ -40,7 +40,8 @@ block_extension Block.savedLean (file : String) (source : String) where
   data := .arr #[.str file, .str source]
 
   traverse _ _ _ := pure none
-  toTeX := none
+  toTeX := some fun _ goB _ _ contents =>
+    contents.mapM goB
   toHtml := some fun _ goB _ _ contents =>
     contents.mapM goB
 
@@ -78,6 +79,24 @@ def savedComment : CodeBlockExpanderOf Unit
     let str := code.getString.trimAsciiEnd.copy
     let comment := s!"/-!\n{str}\n-/"
     ``(Block.other (Block.savedLean $(quote (← getFileName)) $(quote comment)) #[])
+
+block_extension Block.texSetup where
+  traverse _ _ _ := pure none
+  toTeX := some fun _ _ _ _ _ => pure .empty
+  toHtml := some fun _ _ _ _ _ => pure .empty
+  usePackages := [
+    "\\usepackage{stmaryrd}",
+    "\\usepackage{amssymb}"
+  ]
+  preamble := []
+
+/--
+Inject PDF-specific TeX setup such as extra packages and font overrides.
+-/
+@[code_block]
+def texSetup : CodeBlockExpanderOf Unit
+  | (), _ => do
+    ``(Block.other Block.texSetup #[])
 
 private def sharedLeanStringDesc [Monad m] [MonadError m] :
     ValDesc m String := {

@@ -1,5 +1,9 @@
 name = "verified-compiler-notes"
-defaultTargets = ["VerifiedCompilerNotes", "verified-compiler-notes"]
+defaultTargets = [
+  "VerifiedCompilerNotes",
+  "verified-compiler-notes",
+  "verified-compiler-notes-pdf",
+]
 
 [[require]]
 name = "verso"
@@ -12,3 +16,7 @@ name = "VerifiedCompilerNotes"
 [[lean_exe]]
 name = "verified-compiler-notes"
 root = "VerifiedCompilerNotesMain"
+
+[[lean_exe]]
+name = "verified-compiler-notes-pdf"
+root = "VerifiedCompilerNotesPdfMain"

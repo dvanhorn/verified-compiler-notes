@@ -38,6 +38,9 @@ The notes are modeled after the Verso `textbook` template and use the
 same inline Lean workflow, so Lean code examples are checked as part of the
 book build.
 
+```texSetup
+```
+
 To build the notes, run:
 
 `lake exe verified-compiler-notes`
