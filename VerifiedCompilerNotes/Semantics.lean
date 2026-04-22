@@ -1,119 +1,524 @@
-/-
-Copyright (c) 2024-2025 Lean FRO LLC. All rights reserved.
-Released under Apache 2.0 license as described in the file LICENSE.
-Author: David Van Horn
--/
-
 import VersoManual
+import VerifiedCompilerNotes.Meta.Lean
 
 open Verso.Genre Manual
 open Verso.Genre.Manual.InlineLean
+open VerifiedCompilerNotes
 
 
-#doc (Manual) "Modeling Semantics and a Correctness Theorem" =>
+#doc (Manual) "Basic Mechanics of Operational Semantics" =>
 
 %%%
 tag := "chap-semantics"
 %%%
 
 {index}[semantics]
-This chapter defines a tiny expression language, a stack-machine target, and a
-compiler from expressions to machine instructions.
+This chapter develops a tiny arithmetic language and several related semantic
+formulations. We start with an interpreter, then build up big-step and
+small-step operational models, then show how context machinery and an abstract
+machine make control and evaluation order explicit.
 
-# Abstract Syntax and Denotation
+# Syntax
+
+In the notation of a programming-languages paper, the grammar is:
+
+```displayMath
+e ::= n \mid succ(e) \mid pred(e) \mid e₁ + e₂ \mid e₁ * e₂
+```
 
 ```lean
 inductive Expr where
-  | num : Nat → Expr
-  | add : Expr → Expr → Expr
-  | mul : Expr → Expr → Expr
+  | int : Int → Expr
+  | succ : Expr → Expr
+  | pred : Expr → Expr
+  | plus : Expr → Expr → Expr
+  | times : Expr → Expr → Expr
+```
+
+# Interpreter Semantics
+
+We can write the interpreter as a total meta-level function:
+
+```displayMath
+\llbracket e \rrbracket : Expr → Int
+```
+
+with defining equations:
+
+```displayMath
+\llbracket n \rrbracket = n
+```
+
+```displayMath
+\llbracket succ(e) \rrbracket = \llbracket e \rrbracket + 1
+```
+
+```displayMath
+\llbracket pred(e) \rrbracket = \llbracket e \rrbracket - 1
+```
+
+```displayMath
+\llbracket e₁ + e₂ \rrbracket =
+  \llbracket e₁ \rrbracket + \llbracket e₂ \rrbracket
+```
+
+```displayMath
+\llbracket e₁ * e₂ \rrbracket =
+  \llbracket e₁ \rrbracket * \llbracket e₂ \rrbracket
+```
+
+The interpreter is a direct recursive function from terms to integers.
+
+```lean
+def interp : Expr → Int
+  | .int n => n
+  | .succ e => interp e + 1
+  | .pred e => interp e - 1
+  | .plus e₁ e₂ => interp e₁ + interp e₂
+  | .times e₁ e₂ => interp e₁ * interp e₂
 ```
 
 ```lean
-inductive Instr
-  | push : Nat → Instr
-  | add : Instr
-  | mul : Instr
+#eval interp (.plus (.times (.int 3) (.int 4)) (.int 2))
+#eval interp (.succ (.pred (.int 5)))
+#eval
+  interp (.times (.plus (.int 2) (.int 3)) (.int 4))
+```
+
+# Big-Step Evaluation Relation
+
+For big-step semantics we use a judgment of the form:
+
+```displayMath
+e ⇓ n
+```
+
+with rules:
+
+```displayMath
+\frac{\ }{n ⇓ n}
+```
+
+```displayMath
+\frac{e ⇓ n}{succ(e) ⇓ n + 1}
+```
+
+```displayMath
+\frac{e ⇓ n}{pred(e) ⇓ n - 1}
+```
+
+```displayMath
+\frac{e₁ ⇓ n₁ \qquad e₂ ⇓ n₂}{e₁ + e₂ ⇓ n₁ + n₂}
+```
+
+```displayMath
+\frac{e₁ ⇓ n₁ \qquad e₂ ⇓ n₂}{e₁ * e₂ ⇓ n₁ * n₂}
 ```
 
 ```lean
-def eval : Expr → Nat
-  | .num n => n
-  | .add e₁ e₂ => eval e₁ + eval e₂
-  | .mul e₁ e₂ => eval e₁ * eval e₂
-
-
-def compile : Expr → List Instr
-  | .num n => [.push n]
-  | .add e₁ e₂ => compile e₁ ++ compile e₂ ++ [.add]
-  | .mul e₁ e₂ => compile e₁ ++ compile e₂ ++ [.mul]
+inductive Eval : Expr → Int → Prop where
+  | int (n : Int) : Eval (.int n) n
+  | succ {e : Expr} {n : Int} : Eval e n →
+    Eval (.succ e) (n + 1)
+  | pred {e : Expr} {n : Int} : Eval e n →
+    Eval (.pred e) (n - 1)
+  | plus {e₁ e₂ : Expr} {n₁ n₂ : Int} : Eval e₁ n₁ →
+    Eval e₂ n₂ →
+    Eval (.plus e₁ e₂) (n₁ + n₂)
+  | times {e₁ e₂ : Expr} {n₁ n₂ : Int} : Eval e₁ n₁ →
+    Eval e₂ n₂ →
+    Eval (.times e₁ e₂) (n₁ * n₂)
 ```
 
-# Stack Machine Semantics
+# Small-Step Operational Semantics with Congruence Rules
 
-```lean
-def step : Instr → List Nat → Option (List Nat)
-  | .push n, s => some (n :: s)
-  | .add, b :: a :: s => some ((a + b) :: s)
-  | .mul, b :: a :: s => some ((a * b) :: s)
-  | _, _ => none
+For small-step semantics we write:
 
-
-def exec : List Instr → List Nat → Option (List Nat)
-  | [], s => some s
-  | i :: is, s => do
-    let s' ← step i s
-    exec is s'
-
-
-def run : List Instr → Option Nat
-  | is => do
-    let s ← exec is []
-    match s with
-    | [n] => some n
-    | _ => none
-
-
-def runExpr : Expr → Option Nat
-  | e => run (compile e)
+```displayMath
+e → e'
 ```
 
-# A Correctness Statement
+The computation rules include:
 
-```lean
-@[simp] theorem exec_append (is₁ is₂ : List Instr) (s : List Nat) :
-    exec (is₁ ++ is₂) s = Option.bind (exec is₁ s) (fun s' => exec is₂ s') := by
-  induction is₁ generalizing s with
-  | nil =>
-    simp [exec]
-  | cons i is ih =>
-    simp [exec, ih, Option.bind_assoc]
+```displayMath
+succ(n) → n + 1
+```
 
-theorem execCompile : ∀ e s, exec (compile e) s = some (eval e :: s)
-  | .num n, s => by
-      simp [compile, exec, step, eval]
-  | .add e₁ e₂, s => by
-      have h₁ : exec (compile e₁) s = some (eval e₁ :: s) := execCompile e₁ s
-      have h₂ : exec (compile e₂) (eval e₁ :: s) = some (eval e₂ :: eval e₁ :: s) :=
-        execCompile e₂ (eval e₁ :: s)
-      have hEval : eval (Expr.add e₁ e₂) = eval e₁ + eval e₂ := rfl
-      simpa [compile, exec_append, h₁, h₂, exec, step, hEval]
-  | .mul e₁ e₂, s => by
-      have h₁ : exec (compile e₁) s = some (eval e₁ :: s) := execCompile e₁ s
-      have h₂ : exec (compile e₂) (eval e₁ :: s) = some (eval e₂ :: eval e₁ :: s) :=
-        execCompile e₂ (eval e₁ :: s)
-      have hEval : eval (Expr.mul e₁ e₂) = eval e₁ * eval e₂ := rfl
-      simpa [compile, exec_append, h₁, h₂, exec, step, hEval]
+```displayMath
+pred(n) → n - 1
+```
 
-theorem runExpr_eq_eval : ∀ e, run (compile e) = some (eval e)
-  | e => by
-    simpa [run, execCompile]
+```displayMath
+n₁ + n₂ → n₁ + n₂
+```
+
+```displayMath
+n₁ * n₂ → n₁ * n₂
+```
+
+The congruence closure then includes rules such as:
+
+```displayMath
+\frac{e → e'}{succ(e) → succ(e')}
+```
+
+```displayMath
+\frac{e₁ → e₁'}{e₁ + e₂ → e₁' + e₂}
+```
+
+```displayMath
+\frac{e₂ → e₂'}{n + e₂ → n + e₂'}
 ```
 
 ```lean
-#eval eval (.add (.mul (.num 3) (.num 4)) (.num 2))
+inductive Step : Expr → Expr → Prop where
+  | succInt (n : Int) :
+    Step (.succ (.int n)) (.int (n + 1))
+  | predInt (n : Int) :
+    Step (.pred (.int n)) (.int (n - 1))
+  | plusInt (n₁ n₂ : Int) :
+    Step (.plus (.int n₁) (.int n₂)) (.int (n₁ + n₂))
+  | timesInt (n₁ n₂ : Int) :
+    Step (.times (.int n₁) (.int n₂)) (.int (n₁ * n₂))
+  | succCong {e e'} : Step e e' →
+    Step (.succ e) (.succ e')
+  | predCong {e e'} : Step e e' →
+    Step (.pred e) (.pred e')
+  | plusLeftCong {e₁ e₂ e₁'} : Step e₁ e₁' →
+    Step (.plus e₁ e₂) (.plus e₁' e₂)
+  | plusRightCong {n e₂ e₂'} : Step e₂ e₂' →
+    Step (.plus (.int n) e₂) (.plus (.int n) e₂')
+  | timesLeftCong {e₁ e₂ e₁'} : Step e₁ e₁' →
+    Step (.times e₁ e₂) (.times e₁' e₂)
+  | timesRightCong {n e₂ e₂'} : Step e₂ e₂' →
+    Step (.times (.int n) e₂) (.times (.int n) e₂')
 ```
 
 ```lean
-#eval run (compile (.add (.mul (.num 3) (.num 4)) (.num 2)))
+inductive StepStar : Expr → Expr → Prop where
+  | refl (e : Expr) : StepStar e e
+  | trans {e₁ e₂ e₃ : Expr} : Step e₁ e₂ →
+    StepStar e₂ e₃ → StepStar e₁ e₃
+```
+
+# Context-Based Semantics: Core Axioms + Context Closure
+
+An alternative presentation factors the relation into core redex rules:
+
+```displayMath
+e →₀ e'
+```
+
+together with context closure:
+
+```displayMath
+\frac{e →₀ e'}{K[e] → K[e']}
+```
+
+where evaluation contexts are generated by:
+
+```displayMath
+K ::= □ \mid succ(K) \mid pred(K) \mid K + e \mid n + K \mid K * e \mid n * K
+```
+
+```lean
+inductive CoreStep : Expr → Expr → Prop where
+  | succInt (n : Int) :
+    CoreStep (.succ (.int n)) (.int (n + 1))
+  | predInt (n : Int) :
+    CoreStep (.pred (.int n)) (.int (n - 1))
+  | plusInt (n₁ n₂ : Int) :
+    CoreStep (.plus (.int n₁) (.int n₂)) (.int (n₁ + n₂))
+  | timesInt (n₁ n₂ : Int) :
+    CoreStep (.times (.int n₁) (.int n₂)) (.int (n₁ * n₂))
+
+inductive Ctx where
+  | hole
+  | succC : Ctx → Ctx
+  | predC : Ctx → Ctx
+  | plusC₁ : Ctx → Expr → Ctx
+  | plusC₂ : Int → Ctx → Ctx
+  | timesC₁ : Ctx → Expr → Ctx
+  | timesC₂ : Int → Ctx → Ctx
+
+def plug : Ctx → Expr → Expr
+  | .hole, e => e
+  | .succC K, e => .succ (plug K e)
+  | .predC K, e => .pred (plug K e)
+  | .plusC₁ K e₂, e => .plus (plug K e) e₂
+  | .plusC₂ n K, e => .plus (.int n) (plug K e)
+  | .timesC₁ K e₂, e => .times (plug K e) e₂
+  | .timesC₂ n K, e => .times (.int n) (plug K e)
+
+inductive CtxStep : Expr → Expr → Prop where
+  | lift {K : Ctx} {e₁ e₂} : CoreStep e₁ e₂ →
+    CtxStep (plug K e₁) (plug K e₂)
+```
+
+# Small-Step Operational Semantics with Left-to-Right Evaluation Order
+
+To enforce a fixed evaluation order, we refine the step relation so that
+addition and multiplication evaluate their left operand before their right:
+
+```displayMath
+\frac{e₁ → e₁'}{e₁ + e₂ → e₁' + e₂}
+```
+
+```displayMath
+\frac{e₂ → e₂'}{n + e₂ → n + e₂'}
+```
+
+and similarly for multiplication, with the same arithmetic redex rules for
+fully evaluated operands.
+
+```lean
+inductive StepLR : Expr → Expr → Prop where
+  | succInt (n : Int) :
+    StepLR (.succ (.int n)) (.int (n + 1))
+  | predInt (n : Int) :
+    StepLR (.pred (.int n)) (.int (n - 1))
+  | plusLeft (e₁ e₂ e₁') : StepLR e₁ e₁' →
+    StepLR (.plus e₁ e₂) (.plus e₁' e₂)
+  | plusRight {n : Int} {e₂ e₂'} : StepLR e₂ e₂' →
+    StepLR (.plus (.int n) e₂) (.plus (.int n) e₂')
+  | timesLeft (e₁ e₂ e₁') : StepLR e₁ e₁' →
+    StepLR (.times e₁ e₂) (.times e₁' e₂)
+  | timesRight {n : Int} {e₂ e₂'} : StepLR e₂ e₂' →
+    StepLR (.times (.int n) e₂) (.times (.int n) e₂')
+  | plusInt (n₁ n₂ : Int) :
+    StepLR (.plus (.int n₁) (.int n₂)) (.int (n₁ + n₂))
+  | timesInt (n₁ n₂ : Int) :
+    StepLR (.times (.int n₁) (.int n₂)) (.int (n₁ * n₂))
+```
+
+# Evaluation Contexts that Enforce Left-to-Right Order
+
+The same left-to-right strategy can be described with a restricted class of
+evaluation contexts:
+
+```displayMath
+K ::= □ \mid succ(K) \mid pred(K) \mid K + e \mid n + K \mid K * e \mid n * K
+```
+
+where the intended reading is now specifically as left-to-right evaluation
+contexts rather than arbitrary congruence contexts.
+
+```lean
+inductive ECtx where
+  | hole
+  | succE : ECtx → ECtx
+  | predE : ECtx → ECtx
+  | plusE₁ : ECtx → Expr → ECtx
+  | plusE₂ : Int → ECtx → ECtx
+  | timesE₁ : ECtx → Expr → ECtx
+  | timesE₂ : Int → ECtx → ECtx
+
+def fill : ECtx → Expr → Expr
+  | .hole, e => e
+  | .succE K, e => .succ (fill K e)
+  | .predE K, e => .pred (fill K e)
+  | .plusE₁ K e₂, e => .plus (fill K e) e₂
+  | .plusE₂ n K, e => .plus (.int n) (fill K e)
+  | .timesE₁ K e₂, e => .times (fill K e) e₂
+  | .timesE₂ n K, e => .times (.int n) (fill K e)
+
+inductive EStep : Expr → Expr → Prop where
+  | viaCore {K : ECtx} {e₁ e₂} : CoreStep e₁ e₂ →
+    EStep (fill K e₁) (fill K e₂)
+```
+
+# Abstract Machine Semantics
+
+The abstract machine uses states of the form `(e, k)`, where
+`e` is the current control expression and `k` is a stack of frames.
+
+```displayMath
+f ::= succF \mid predF \mid plusF₁(e) \mid plusF₂(n) \mid timesF₁(e) \mid timesF₂(n)
+```
+
+and transitions have the form:
+
+```displayMath
+⟨e, k⟩ ↦ ⟨e', k'⟩
+```
+
+Transition patterns include:
+
+```displayMath
+⟨e₁ + e₂, k⟩ ↦ ⟨e₁, plusF₁(e₂) :: k⟩
+```
+
+```displayMath
+⟨n₁, plusF₁(e₂) :: k⟩ ↦ ⟨e₂, plusF₂(n₁) :: k⟩
+```
+
+```displayMath
+⟨n₂, plusF₂(n₁) :: k⟩ ↦ ⟨n₁ + n₂, k⟩
+```
+
+```lean
+inductive Frame where
+  | succF
+  | predF
+  | plusF₁ : Expr → Frame
+  | plusF₂ : Int → Frame
+  | timesF₁ : Expr → Frame
+  | timesF₂ : Int → Frame
+
+abbrev FrameStack := List Frame
+abbrev MachineState := Expr × FrameStack
+inductive MachineStep : MachineState → MachineState → Prop
+  where
+  -- descend into the redex to evaluate the next subterm
+  | pushSucc (e : Expr) (k : FrameStack) :
+    MachineStep (.succ e, k) (e, .succF :: k)
+  | pushPred (e : Expr) (k : FrameStack) :
+    MachineStep (.pred e, k) (e, .predF :: k)
+  | pushPlusLeft (e₁ e₂ : Expr) (k : FrameStack) :
+    MachineStep (.plus e₁ e₂, k)
+    (e₁, .plusF₁ e₂ :: k)
+  | pushTimesLeft (e₁ e₂ : Expr) (k : FrameStack) :
+    MachineStep (.times e₁ e₂, k)
+    (e₁, .timesF₁ e₂ :: k)
+  -- return to continuation frames
+  | popSucc (n : Int) (k : FrameStack) :
+    MachineStep (.int n, .succF :: k) (.int (n + 1), k)
+  | popPred (n : Int) (k : FrameStack) :
+    MachineStep (.int n, .predF :: k) (.int (n - 1), k)
+  | popPlusLeft (n₁ : Int) (e₂ : Expr) (k : FrameStack) :
+    MachineStep (.int n₁, .plusF₁ e₂ :: k)
+    (e₂, .plusF₂ n₁ :: k)
+  | popPlusRight (n₁ n₂ : Int) (k : FrameStack) :
+    MachineStep
+      (.int n₂, .plusF₂ n₁ :: k)
+      (.int (n₁ + n₂), k)
+  | popTimesLeft (n₁ : Int) (e₂ : Expr) (k : FrameStack) :
+    MachineStep (.int n₁, .timesF₁ e₂ :: k)
+    (e₂, .timesF₂ n₁ :: k)
+  | popTimesRight (n₁ n₂ : Int) (k : FrameStack) :
+    MachineStep
+      (.int n₂, .timesF₂ n₁ :: k)
+      (.int (n₁ * n₂), k)
+```
+
+# Abstract Machine Interpreter
+
+The interpreter induced by the machine can be presented mathematically as a
+total function:
+
+```displayMath
+run(⟨e, k⟩) : Int
+```
+
+with the final-result equation:
+
+```displayMath
+run(⟨n, ·⟩) = n
+```
+
+and otherwise defined by following one machine transition:
+
+```displayMath
+s ↦ s' \implies run(s) = run(s')
+```
+
+To justify totality in Lean, we equip states with a well-founded measure:
+
+```displayMath
+\mu(⟨e, k⟩)
+```
+
+This counts both the current expression and the pending work stored in frames.
+
+```sharedLean (snippet := "machineMeasureDefs")
+def exprMeasure : Expr → Nat
+  | .int _ => 1
+  | .succ e => exprMeasure e + 2
+  | .pred e => exprMeasure e + 2
+  | .plus e₁ e₂ => exprMeasure e₁ + exprMeasure e₂ + 3
+  | .times e₁ e₂ => exprMeasure e₁ + exprMeasure e₂ + 3
+
+def frameMeasure : Frame → Nat
+  | .succF => 1
+  | .predF => 1
+  | .plusF₁ e => exprMeasure e + 2
+  | .plusF₂ _ => 1
+  | .timesF₁ e => exprMeasure e + 2
+  | .timesF₂ _ => 1
+
+def stackMeasure : FrameStack → Nat
+  | [] => 0
+  | f :: k => frameMeasure f + stackMeasure k
+
+def machineMeasure : MachineState → Nat
+  | (e, k) => exprMeasure e + stackMeasure k
+```
+
+```lean
+-- Deterministic one-step transition on machine states.
+def machineStep : MachineState → Option MachineState
+  | (.succ e, k) => some (e, .succF :: k)
+  | (.pred e, k) => some (e, .predF :: k)
+  | (.plus e₁ e₂, k) => some (e₁, .plusF₁ e₂ :: k)
+  | (.times e₁ e₂, k) => some (e₁, .timesF₁ e₂ :: k)
+  | (.int n, .succF :: k) => some (.int (n + 1), k)
+  | (.int n, .predF :: k) => some (.int (n - 1), k)
+  | (.int n₁, .plusF₁ e₂ :: k) =>
+    some (e₂, .plusF₂ n₁ :: k)
+  | (.int n₂, .plusF₂ n₁ :: k) =>
+    some (.int (n₁ + n₂), k)
+  | (.int n₁, .timesF₁ e₂ :: k) =>
+    some (e₂, .timesF₂ n₁ :: k)
+  | (.int n₂, .timesF₂ n₁ :: k) =>
+    some (.int (n₁ * n₂), k)
+  | _ => none
+
+-- The measure decreases because stack frames
+-- record pending work.
+def runMachine : MachineState → Int
+  | (.succ e, k) => runMachine (e, .succF :: k)
+  | (.pred e, k) => runMachine (e, .predF :: k)
+  | (.plus e₁ e₂, k) => runMachine (e₁, .plusF₁ e₂ :: k)
+  | (.times e₁ e₂, k) => runMachine (e₁, .timesF₁ e₂ :: k)
+  | (.int n, .succF :: k) => runMachine (.int (n + 1), k)
+  | (.int n, .predF :: k) => runMachine (.int (n - 1), k)
+  | (.int n₁, .plusF₁ e₂ :: k) =>
+    runMachine (e₂, .plusF₂ n₁ :: k)
+  | (.int n₂, .plusF₂ n₁ :: k) =>
+    runMachine (.int (n₁ + n₂), k)
+  | (.int n₁, .timesF₁ e₂ :: k) =>
+    runMachine (e₂, .timesF₂ n₁ :: k)
+  | (.int n₂, .timesF₂ n₁ :: k) =>
+    runMachine (.int (n₁ * n₂), k)
+  | (.int n, []) => n
+termination_by s => machineMeasure s
+decreasing_by
+  all_goals
+    simp [
+      machineMeasure,
+      stackMeasure,
+      frameMeasure,
+      exprMeasure
+    ]
+    try omega
+
+-- Public interpreter API over expressions
+def interpMachine (e : Expr) : Int :=
+  runMachine (e, [])
+```
+
+```lean
+#eval
+  interpMachine (.plus (.times (.int 3) (.int 4)) (.int 2))
+#eval interpMachine (.succ (.pred (.int 5)))
+#eval
+  interpMachine (.times (.plus (.int 2) (.int 3)) (.int 4))
+```
+
+The recursive definition of `runMachine` is total, but Lean needs a
+well-founded measure that decreases across each machine transition. The key
+observation is that pending computation lives partly in the current expression
+and partly in the frame stack, so the measure has to account for both.
+
+```replayLean (snippet := "machineMeasureDefs")
 ```
