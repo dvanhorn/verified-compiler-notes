@@ -13,18 +13,224 @@ tag := "chap-semantics"
 %%%
 
 {index}[semantics]
+
+# Overview
+
+A programming language is a way of describing computations. Defining a
+programming language consists of defining at least two things:
+
+- Syntax
+- Semantics
+
+The syntax of a language defines the rules for constructing phrases of
+the language. These rules are often expressed grammatically using BNF
+notation. From a mathematical point of view, the syntax defines a set:
+the set of programs in the language. Syntax is inert:
+it simply captures the marks we make to write down program text.
+
+The semantics of a language defines the meaning of programs by assigning
+computational behavior to syntactically well-formed programs.
+
+There are many different ways of defining the semantics of a programming
+language. In these notes, we focus on operational semantics. An
+operational semantics defines the meaning of programs by describing the
+actions carried out when a program is run.
+
+Even within operational semantics, there are several different styles.
+We will look at several:
+
+- Interpreter semantics
+- Natural (big-step) semantics
+- Reduction (small-step, or SOS) semantics
+- Abstract machine semantics
+
+## What is operational semantics useful for?
+
+There are many reasons to define an operational semantics.
+
+*Specifying a programming language.* You might be building a
+programming language and want to provide a formal specification. There
+are many widely used languages with formal semantics. WebAssembly is a
+prominent example with a
+[formal specification](https://webassembly.github.io/spec/core/)
+including an operational semantics. Having an operational semantics
+helps remove ambiguity about what programs mean. It gives implementers
+of engines, validators, and compilers a precise target to test against.
+It fosters interoperability, supports the design of extensions, and
+provides a basis for tools such as program analyzers, symbolic
+execution engines, and model checkers.
+
+Specifying a large industrial language like WebAssembly is a major
+undertaking. It can involve standards bodies and years of work by large
+teams of experts. But even when designing a small toy language or a
+research prototype, it is useful to start with an operational
+semantics. Specification-driven development is good engineering
+practice.
+
+While standardization is one important use of operational semantics, a
+more common use for the working PL researcher is to communicate
+research ideas.
+
+*Communicating a research idea.* In the programming-languages
+literature, operational semantics are often used to present language
+designs concisely. They provide a compact way of conveying the essence
+of an idea to other experts. To really understand what a PL research
+paper is saying requires learning the notations and conventions the
+community uses for presenting formal semantics. If you want to
+communicate your own ideas to other experts, you need to learn to read
+and write in this style.
+
+If you open a paper from one of the main [SIGPLAN](https://www.sigplan.org/)
+venues such as
+[POPL](https://www.sigplan.org/Conferences/POPL/),
+[PLDI](https://www.sigplan.org/Conferences/PLDI/),
+[ICFP](https://www.sigplan.org/Conferences/ICFP/), or
+[OOPSLA](https://www.sigplan.org/Conferences/OOPSLA/),
+chances are you will see a formal definition of a programming language
+including its syntax and semantics. Often the semantics is given for a
+core calculus rather than the full surface language, so that only the
+essential ideas are included. Unlike the WebAssembly specification,
+which aims to cover a full practical language, the semantics in
+research papers usually distills a language to its essentials so that
+the main ideas come across clearly.
+
+If you have never looked at a PL paper, it is worth browsing the
+proceedings of a recent PL conference
+just to get a feel for the style. Derek Dreyer, a prominent PL
+researcher and author of highly readable papers, has a recommended talk
+called
+[_How to Write Papers So People Can Read Them_](https://www.youtube.com/watch?v=KfEVdMMY1aQ).
+In it, he describes a paper structure that is common in the PL
+literature, along with the rough size of the audience for each part:
+
+- Abstract (1-2 paragraphs, 1000 readers)
+- Introduction (1-2 pages, 100 readers)
+- Main ideas (2-3 pages, 50 readers)
+- Technical meat (4-6 pages, 5 readers)
+- Related work (1-2 pages, 100 readers)
+
+The "technical meat" is where you will usually find the operational
+semantics. Despite being the least read section, it is where the actual
+details of an idea are nailed down. If you want to really internalize a
+paper's contribution, you need to be one of those five readers.
+
+*Validating claims about languages.* Beyond communicating an idea,
+semantics can also be used to validate precise claims about that idea.
+Perhaps we have a new language design and want to claim that it has
+some desirable property.
+
+*Proving correctness of algorithms.* PL papers often propose not only
+new language designs, but also tools and algorithms that operate on
+programs. When that happens, an operational semantics can be used to
+state and validate correctness claims. For example, suppose we wrote a
+compiler from Standard ML to WebAssembly. Both languages have formal
+semantics. Proving the compiler correct means showing that the meaning
+of every Standard ML source program is preserved by the generated
+WebAssembly program.
+
+Proofs are one of the main forms of evidence valued by the PL
+community, so papers often include proofs of formal claims. In
+practice, those proofs are often moved to appendices and read by even
+fewer people than the technical core of the paper.
+
+
+
 This chapter develops a tiny arithmetic language and several related semantic
 formulations. We start with an interpreter, then build up big-step and
 small-step operational models, then show how context machinery and an abstract
 machine make control and evaluation order explicit.
 
+# Primer on Semantic Notation
+
+
+Operational-semantics presentations use a small amount of mathematical
+shorthand. This chapter follows standard programming-languages notation, so it
+is worth fixing the reading conventions up front.
+
+First, metavariables range over specific sets. When we write a grammar such as:
+
+$$`
+e ::= n \mid succ(e) \mid pred(e) \mid plus(e_1, e_2) \mid times(e_1, e_2)
+`
+
+the metavariable $`e` thereafter means an element of the inductively defined
+set generated by that grammar. Likewise, $`n` ranges over integers, $`K`
+ranges over contexts when contexts are introduced, and so on. The letter is not
+just a placeholder for an arbitrary mathematical object; it is constrained by
+the grammar or judgment where it is declared.
+
+Second, grammars and relations presented this way are inductively defined sets.
+The grammar above should be read as giving the least set of expressions closed
+under the displayed constructors:
+
+$$`
+\begin{gathered}
+\text{if } n \in \mathbb{Z}, \text{ then } n \in Expr \\
+\text{if } e \in Expr, \text{ then } succ(e) \in Expr \text{ and } pred(e) \in Expr \\
+\text{if } e_1, e_2 \in Expr, \text{ then }
+  plus(e_1, e_2) \in Expr \text{ and } times(e_1, e_2) \in Expr
+\end{gathered}
+`
+
+The same idea applies to evaluation relations. For example, a big-step judgment
+$`e \Downarrow n` is defined by the displayed rules: an instance of the
+judgment holds exactly when it can be derived from those rules.
+
+It is also useful to be explicit about what relation notation means. A symbol
+such as $`\Downarrow` denotes a binary relation, here relating expressions to
+integers. Writing the judgment infix as $`e \Downarrow n` means exactly that the
+pair $`(e, n)` belongs to the relation $`\Downarrow`. In more explicit set-theoretic
+language, if we regard $`\Downarrow \subseteq Expr \times Int`, then
+$`e \Downarrow n` means $`(e, n) \in \Downarrow`. The infix notation is simply
+more readable than constantly writing ordered pairs and set membership.
+
+Finally, inference rules describe how new judgments may be concluded from old
+ones. A rule of the form
+
+$$`
+\frac{J_1 \qquad \cdots \qquad J_k}{J}
+`
+
+is a stylized presentation of an implication: it says that if the premises
+$`J_1, \ldots, J_k` hold, then the conclusion $`J` holds. In other words, it
+can be read as the formula
+
+$$`
+(J_1 \land \cdots \land J_k) \implies J
+`
+
+When operational semantics is presented with many such rules, the intent is
+that the relation is the least one closed under those implications. A rule with
+no premises,
+
+$$`
+\frac{\ }{J}
+`
+
+is an axiom: it says that $`J` holds directly. Reading rules this way lets us
+move smoothly between the mathematical presentation of semantics and the
+corresponding inductive definitions in Lean.
+
+Taken together, the rules form a proof system for the judgments they define. To
+show that a particular judgment belongs to the inductively defined relation, one
+must build a finite derivation tree whose nodes are judgments, whose children
+justify their parent according to one of the inference rules, and whose root is
+the judgment of interest. For example, to show that a specific big-step
+judgment holds, one would construct a tree ending in that judgment and work
+backwards by choosing rules whose premises reduce the problem to simpler
+judgments. A judgment belongs to the relation exactly when such a derivation
+exists. When a rule is displayed with a name such as $`plusInt` or $`timesLeft`,
+that name is simply a label for referring to the rule in prose or in a
+derivation; in this chapter, those labels are chosen to match the corresponding
+Lean constructor names.
+
 # Syntax
 
 In the notation of a programming-languages paper, the grammar is:
 
-`$$
-e ::= n \mid succ(e) \mid pred(e) \mid plus(e₁, e₂) \mid times(e₁, e₂)
 $$`
+e ::= n \mid succ(e) \mid pred(e) \mid plus(e_1, e_2) \mid times(e_1, e_2)
+`
 
 ```lean
 inductive Expr where
@@ -39,33 +245,23 @@ inductive Expr where
 
 We can write the interpreter as a total meta-level function:
 
-`$$
-\llbracket e \rrbracket : Expr → Int
 $$`
+\llbracket e \rrbracket : Expr \to Int
+`
 
 with defining equations:
 
-`$$
-\llbracket n \rrbracket = n
 $$`
-
-`$$
-\llbracket succ(e) \rrbracket = \llbracket e \rrbracket + 1
-$$`
-
-`$$
-\llbracket pred(e) \rrbracket = \llbracket e \rrbracket - 1
-$$`
-
-`$$
-\llbracket plus(e₁, e₂) \rrbracket =
-  \llbracket e₁ \rrbracket + \llbracket e₂ \rrbracket
-$$`
-
-`$$
-\llbracket times(e₁, e₂) \rrbracket =
-  \llbracket e₁ \rrbracket * \llbracket e₂ \rrbracket
-$$`
+\begin{aligned}
+\llbracket n \rrbracket &= n \\
+\llbracket succ(e) \rrbracket &= \llbracket e \rrbracket + 1 \\
+\llbracket pred(e) \rrbracket &= \llbracket e \rrbracket - 1 \\
+\llbracket plus(e_1, e_2) \rrbracket
+  &= \llbracket e_1 \rrbracket + \llbracket e_2 \rrbracket \\
+\llbracket times(e_1, e_2) \rrbracket
+  &= \llbracket e_1 \rrbracket * \llbracket e_2 \rrbracket
+\end{aligned}
+`
 
 The interpreter is a direct recursive function from terms to integers.
 
@@ -89,31 +285,29 @@ def interp : Expr → Int
 
 For big-step semantics we use a judgment of the form:
 
-`$$
-e ⇓ n
 $$`
+e \Downarrow n
+`
 
 with rules:
 
-`$$
-\frac{\ }{n ⇓ n}
 $$`
-
-`$$
-\frac{e ⇓ n}{succ(e) ⇓ n + 1}
-$$`
-
-`$$
-\frac{e ⇓ n}{pred(e) ⇓ n - 1}
-$$`
-
-`$$
-\frac{e₁ ⇓ n₁ \qquad e₂ ⇓ n₂}{plus(e₁, e₂) ⇓ n₁ + n₂}
-$$`
-
-`$$
-\frac{e₁ ⇓ n₁ \qquad e₂ ⇓ n₂}{times(e₁, e₂) ⇓ n₁ * n₂}
-$$`
+\begin{gathered}
+\textsf{int}\; \dfrac{\ }{n \Downarrow n}
+\qquad
+\textsf{succ}\; \dfrac{e \Downarrow n}{succ(e) \Downarrow n + 1}
+\qquad
+\textsf{pred}\; \dfrac{e \Downarrow n}{pred(e) \Downarrow n - 1}
+\\[1em]
+\textsf{plus}\;
+  \dfrac{e_1 \Downarrow n_1 \qquad e_2 \Downarrow n_2}
+        {plus(e_1, e_2) \Downarrow n_1 + n_2}
+\qquad
+\textsf{times}\;
+  \dfrac{e_1 \Downarrow n_1 \qquad e_2 \Downarrow n_2}
+        {times(e_1, e_2) \Downarrow n_1 * n_2}
+\end{gathered}
+`
 
 ```lean
 inductive Eval : Expr → Int → Prop where
@@ -134,29 +328,39 @@ inductive Eval : Expr → Int → Prop where
 
 For small-step semantics we write:
 
-`$$
-e → e'
 $$`
+e \to e'
+`
 
 The computation rules include:
 
-`$$
-\begin{gathered}
-\textsc{Succ}\; \dfrac{}{succ(n) \to n + 1}
-\qquad
-\textsc{Pred}\; \dfrac{}{pred(n) \to n - 1}
-\qquad
-\textsc{Plus}\; \dfrac{}{plus(n_1, n_2) \to n_1 + n_2}
-\\[1em]
-\textsc{Times}\; \dfrac{}{times(n_1, n_2) \to n_1 * n_2}
-\qquad
-\textsc{SuccCong}\; \dfrac{e \to e'}{succ(e) \to succ(e')}
-\\[1em]
-\textsc{PlusLeft}\; \dfrac{e_1 \to e_1'}{plus(e_1, e_2) \to plus(e_1', e_2)}
-\qquad
-\textsc{PlusRight}\; \dfrac{e_2 \to e_2'}{plus(n, e_2) \to plus(n, e_2')}
-\end{gathered}
 $$`
+\begin{gathered}
+\textsf{succInt}\; \dfrac{}{succ(n) \to n + 1}
+\qquad
+\textsf{predInt}\; \dfrac{}{pred(n) \to n - 1}
+\\[1em]
+\textsf{plusInt}\; \dfrac{}{plus(n_1, n_2) \to n_1 + n_2}
+\qquad
+\textsf{timesInt}\; \dfrac{}{times(n_1, n_2) \to n_1 * n_2}
+\\[1em]
+\textsf{succCong}\; \dfrac{e \to e'}{succ(e) \to succ(e')}
+\qquad
+\textsf{predCong}\; \dfrac{e \to e'}{pred(e) \to pred(e')}
+\\[1em]
+\textsf{plusLeftCong}\;
+  \dfrac{e_1 \to e_1'}{plus(e_1, e_2) \to plus(e_1', e_2)}
+\qquad
+\textsf{plusRightCong}\;
+  \dfrac{e_2 \to e_2'}{plus(n, e_2) \to plus(n, e_2')}
+\\[1em]
+\textsf{timesLeftCong}\;
+  \dfrac{e_1 \to e_1'}{times(e_1, e_2) \to times(e_1', e_2)}
+\qquad
+\textsf{timesRightCong}\;
+  \dfrac{e_2 \to e_2'}{times(n, e_2) \to times(n, e_2')}
+\end{gathered}
+`
 
 ```lean
 inductive Step : Expr → Expr → Prop where
@@ -193,21 +397,16 @@ inductive StepStar : Expr → Expr → Prop where
 
 An alternative presentation factors the relation into core redex rules:
 
-`$$
-e →₀ e'
 $$`
-
-together with context closure:
-
-`$$
-\frac{e →₀ e'}{K[e] → K[e']}
-$$`
-
-where evaluation contexts are generated by:
-
-`$$
-K ::= □ \mid succ(K) \mid pred(K) \mid plus(K, e) \mid plus(n, K) \mid times(K, e) \mid times(n, K)
-$$`
+\begin{gathered}
+e \to_0 e'
+\\[1em]
+\textsf{lift}\; \dfrac{e \to_0 e'}{K[e] \to K[e']}
+\\[1em]
+K ::= \square \mid succ(K) \mid pred(K) \mid plus(K, e) \mid plus(n, K)
+      \mid times(K, e) \mid times(n, K)
+\end{gathered}
+`
 
 ```lean
 inductive CoreStep : Expr → Expr → Prop where
@@ -248,13 +447,35 @@ inductive CtxStep : Expr → Expr → Prop where
 To enforce a fixed evaluation order, we refine the step relation so that
 addition and multiplication evaluate their left operand before their right:
 
-`$$
-\frac{e₁ → e₁'}{plus(e₁, e₂) → plus(e₁', e₂)}
 $$`
+\begin{gathered}
+\textsf{plusLeft}\;
+  \dfrac{e_1 \to e_1'}{plus(e_1, e_2) \to plus(e_1', e_2)}
+\qquad
+\textsf{plusRight}\;
+  \dfrac{e_2 \to e_2'}{plus(n, e_2) \to plus(n, e_2')}
+\\[1em]
+\textsf{timesLeft}\;
+  \dfrac{e_1 \to e_1'}{times(e_1, e_2) \to times(e_1', e_2)}
+\qquad
+\textsf{timesRight}\;
+  \dfrac{e_2 \to e_2'}{times(n, e_2) \to times(n, e_2')}
+\end{gathered}
+`
 
-`$$
-\frac{e₂ → e₂'}{plus(n, e₂) → plus(n, e₂')}
+The arithmetic redex rules retain the same constructor names as before:
+
 $$`
+\begin{gathered}
+\textsf{succInt}\; \dfrac{}{succ(n) \to n + 1}
+\qquad
+\textsf{predInt}\; \dfrac{}{pred(n) \to n - 1}
+\qquad
+\textsf{plusInt}\; \dfrac{}{plus(n_1, n_2) \to n_1 + n_2}
+\\[1em]
+\textsf{timesInt}\; \dfrac{}{times(n_1, n_2) \to n_1 * n_2}
+\end{gathered}
+`
 
 and similarly for multiplication, with the same arithmetic redex rules for
 fully evaluated operands.
@@ -284,9 +505,12 @@ inductive StepLR : Expr → Expr → Prop where
 The same left-to-right strategy can be described with a restricted class of
 evaluation contexts:
 
-`$$
-K ::= □ \mid succ(K) \mid pred(K) \mid plus(K, e) \mid plus(n, K) \mid times(K, e) \mid times(n, K)
 $$`
+\begin{gathered}
+K ::= \square \mid succ(K) \mid pred(K) \mid plus(K, e) \mid plus(n, K)
+      \mid times(K, e) \mid times(n, K)
+\end{gathered}
+`
 
 where the intended reading is now specifically as left-to-right evaluation
 contexts rather than arbitrary congruence contexts.
@@ -320,29 +544,26 @@ inductive EStep : Expr → Expr → Prop where
 The abstract machine uses states of the form `(e, k)`, where
 `e` is the current control expression and `k` is a stack of frames.
 
-`$$
-f ::= succF \mid predF \mid plusF₁(e) \mid plusF₂(n) \mid timesF₁(e) \mid timesF₂(n)
 $$`
-
-and transitions have the form:
-
-`$$
-⟨e, k⟩ ↦ ⟨e', k'⟩
-$$`
-
-Transition patterns include:
-
-`$$
-⟨plus(e₁, e₂), k⟩ ↦ ⟨e₁, plusF₁(e₂) :: k⟩
-$$`
-
-`$$
-⟨n₁, plusF₁(e₂) :: k⟩ ↦ ⟨e₂, plusF₂(n₁) :: k⟩
-$$`
-
-`$$
-⟨n₂, plusF₂(n₁) :: k⟩ ↦ ⟨n₁ + n₂, k⟩
-$$`
+\begin{gathered}
+f ::= succF \mid predF \mid plusF_1(e) \mid plusF_2(n)
+      \mid timesF_1(e) \mid timesF_2(n)
+\\[1em]
+\langle e, k \rangle \mapsto \langle e', k' \rangle
+\\[1em]
+\begin{aligned}
+\textsf{pushPlusLeft}\quad
+  \langle plus(e_1, e_2), k \rangle
+  &\mapsto \langle e_1, plusF_1(e_2) :: k \rangle \\
+\textsf{popPlusLeft}\quad
+  \langle n_1, plusF_1(e_2) :: k \rangle
+  &\mapsto \langle e_2, plusF_2(n_1) :: k \rangle \\
+\textsf{popPlusRight}\quad
+  \langle n_2, plusF_2(n_1) :: k \rangle
+  &\mapsto \langle n_1 + n_2, k \rangle
+\end{aligned}
+\end{gathered}
+`
 
 ```lean
 inductive Frame where
@@ -394,27 +615,17 @@ inductive MachineStep : MachineState → MachineState → Prop
 The interpreter induced by the machine can be presented mathematically as a
 total function:
 
-`$$
-run(⟨e, k⟩) : Int
 $$`
-
-with the final-result equation:
-
-`$$
-run(⟨n, ·⟩) = n
-$$`
-
-and otherwise defined by following one machine transition:
-
-`$$
-s ↦ s' \implies run(s) = run(s')
-$$`
-
-To justify totality in Lean, we equip states with a well-founded measure:
-
-`$$
-\mu(⟨e, k⟩)
-$$`
+\begin{gathered}
+run(\langle e, k \rangle) : Int
+\\[1em]
+run(\langle n, \cdot \rangle) = n
+\\[1em]
+s \mapsto s' \implies run(s) = run(s')
+\\[1em]
+\mu(\langle e, k \rangle)
+\end{gathered}
+`
 
 This counts both the current expression and the pending work stored in frames.
 
