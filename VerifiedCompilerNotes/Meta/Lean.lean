@@ -79,15 +79,6 @@ def savedComment : CodeBlockExpanderOf Unit
     let comment := s!"/-!\n{str}\n-/"
     ``(Block.other (Block.savedLean $(quote (← getFileName)) $(quote comment)) #[])
 
-/--
-Explicit display-math block. This avoids relying on Markdown `$` parsing in chapter text.
--/
-@[code_block]
-def displayMath : CodeBlockExpanderOf Unit
-  | (), code => do
-    let math := code.getString.trimAscii.copy
-    ``(Block.para #[Verso.Doc.Inline.math Verso.Doc.MathMode.display $(quote math)])
-
 private def sharedLeanStringDesc [Monad m] [MonadError m] :
     ValDesc m String := {
   description := "snippet name"

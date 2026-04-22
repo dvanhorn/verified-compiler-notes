@@ -38,23 +38,18 @@ This is a Lean + Verso documentation project built from the Verso `textbook` tem
 
 ## Content Conventions
 - Follow the existing Manual-style section structure and `Manual`/`lean` block usage.
+- Use `https://github.com/leanprover/verso-templates` as the primary reference for supported Verso authoring patterns and template examples before adding local extensions.
 - Use `savedLean`/`savedImport` where example code extraction is intended.
 - Prefer small, self-contained semantic chapters that remain compilation-checkable.
-- For explicit rendered mathematics in chapter text, prefer the local `displayMath` code block from `VerifiedCompilerNotes.Meta.Lean` rather than raw `$...$` or `$$...$$`.
+- For rendered mathematics in chapter text, use native Verso math syntax wrapped in backticks: `` `$...$` `` for inline math and `` `$$...$$` `` for display math.
+- KaTeX syntax support reference:
+  - Supported functions: `https://katex.org/docs/supported`
+  - Support table: `https://katex.org/docs/support_table`
 - For Lean snippets that must elaborate earlier but be displayed later, prefer the local `sharedLean (snippet := "...")` and `replayLean (snippet := "...")` blocks from `VerifiedCompilerNotes.Meta.Lean`.
 
 ## Operational Notes (from current session)
 - Chapter source currently in `VerifiedCompilerNotes/Semantics.lean` uses only definitions and no theorem proofs.
-- Build command is `cd /Users/dvanhorn/git/verified-compiler-notes && lake exe verified-compiler-notes`.
-- If building from an x86/Rosetta shell polluted MD4Lean artifacts, `VersoManual.Markdown` may fail with `Lean exited with code 139` and `x86_64`/`arm64` MD4Lean object warnings.
-- Before rebuilding after native crashes, clear these caches:
-  - `.lake/packages/MD4Lean/.lake/build`
-  - `.lake/packages/subverso/.lake/build`
-  - `.lake/packages/verso/.lake/build`
-- If the MD4Lean package itself is still contaminated, remove `.lake/packages/MD4Lean` and let `lake` re-fetch it.
-- In this repo, the successful local fix was to rebuild MD4Lean as arm64 and force `-arch arm64` in `.lake/packages/MD4Lean/lakefile.lean` for the non-Windows `compileO` flags. This is a local recovery step, not a source-level repo change.
-- After restoring arm64 MD4Lean artifacts, the docs build succeeded and later failures were ordinary Lean/source issues rather than architecture crashes.
+- Build from the project root with `lake exe verified-compiler-notes`.
 - `VerifiedCompilerNotes.Meta.Lean` now defines reusable local Verso extensions:
-  - `displayMath` for explicit display-math blocks
   - `sharedLean` / `replayLean` for “define once, display later” Lean snippets
 - `VerifiedCompilerNotes/Semantics.lean` imports `VerifiedCompilerNotes.Meta.Lean` directly so these local blocks are available during chapter elaboration.
