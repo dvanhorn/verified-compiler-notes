@@ -132,7 +132,10 @@ block_extension Block.texSetup where
     "\\usepackage{stmaryrd}",
     "\\usepackage{amssymb}"
   ]
-  preamble := []
+  preamble := [
+    "\\let\\texSetupOriginalHref\\href",
+    "\\RenewDocumentCommand{\\href}{mm}{\\texSetupOriginalHref{#1}{#2}}"
+  ]
 
 /--
 Inject PDF-specific TeX setup such as extra packages and font overrides.
