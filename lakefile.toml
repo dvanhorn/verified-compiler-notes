@@ -1,0 +1,14 @@
+name = "verified-compiler-notes"
+defaultTargets = ["VerifiedCompilerNotes", "verified-compiler-notes"]
+
+[[require]]
+name = "verso"
+git = "https://github.com/leanprover/verso"
+rev = "v4.27.0"
+
+[[lean_lib]]
+name = "VerifiedCompilerNotes"
+
+[[lean_exe]]
+name = "verified-compiler-notes"
+root = "VerifiedCompilerNotesMain"

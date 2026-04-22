@@ -1,0 +1,20 @@
+# Build artifacts
+.lake/
+.olean
+.ilean
+.olean.hash
+.ilean.hash
+
+# Generated docs
+_out/
+
+# Bytecode / caches
+*.c
+*.o
+*.o.export
+*.trace
+*.hash
+*.setup.json
+
+# Editor / OS
+.DS_Store
