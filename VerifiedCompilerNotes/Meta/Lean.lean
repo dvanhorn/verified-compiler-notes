@@ -13,6 +13,29 @@ open Lean
 
 namespace VerifiedCompilerNotes
 
+private partial def inlineSortingKey : Verso.Doc.Inline g → String
+  | .text str | .code str | .math _ str => str
+  | .linebreak _ => " "
+  | .emph i | .bold i | .concat i | .link i _ | .other _ i =>
+      String.join (i.toList.map inlineSortingKey)
+  | .image .. | .footnote .. => ""
+
+private def texIndexEscape (s : String) : String :=
+  let s := s.replace "\\" "\\\\"
+  let s := s.replace "!" "\\!"
+  let s := s.replace "@" "\\@"
+  let s := s.replace "|" "\\|"
+  s.replace "\"" "\\\""
+
+private def texIndexEntry
+    (entry : _root_.Verso.Genre.Manual.Index.Entry) : String :=
+  let ⟨termIn, subtermIn, _⟩ := entry
+  let term :=
+    texIndexEscape <| inlineSortingKey termIn
+  match subtermIn with
+  | none => term
+  | some sub => term ++ "!" ++ texIndexEscape (inlineSortingKey sub)
+
 private def reusableLeanBlocksKey : Name :=
   `VerifiedCompilerNotes.reusableLeanBlocks
 
@@ -79,6 +102,27 @@ def savedComment : CodeBlockExpanderOf Unit
     let str := code.getString.trimAsciiEnd.copy
     let comment := s!"/-!\n{str}\n-/"
     ``(Block.other (Block.savedLean $(quote (← getFileName)) $(quote comment)) #[])
+
+@[inline_extension Verso.Genre.Manual.index]
+private def texIndexDescr : InlineDescr :=
+  { Verso.Genre.Manual.index.descr with
+    toTeX := some <| fun _ _ data _ => do
+      match FromJson.fromJson? data with
+      | .error err =>
+        Verso.Doc.TeX.logError err
+        pure .empty
+      | .ok (entry : _root_.Verso.Genre.Manual.Index.Entry) =>
+        pure <| .raw ("\\index{" ++ texIndexEntry entry ++ "}")
+  }
+
+@[block_extension Verso.Genre.Manual.theIndex]
+private def texTheIndexDescr : BlockDescr :=
+  { Verso.Genre.Manual.theIndex.descr with
+    toTeX := some <| fun _ _ _ _ _ => do
+      pure <| .raw "\\printindex\n"
+    usePackages := (["\\usepackage{makeidx}"] : List String)
+    preamble := (["\\makeindex"] : List String)
+  }
 
 block_extension Block.texSetup where
   traverse _ _ _ := pure none
