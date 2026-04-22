@@ -13,6 +13,29 @@ open Lean
 
 namespace VerifiedCompilerNotes
 
+private def reusableLeanBlocksKey : Name :=
+  `VerifiedCompilerNotes.reusableLeanBlocks
+
+private def getReusableLeanTable (state : TraverseState) : Json :=
+  ((state.get? reusableLeanBlocksKey : Option (Except String Json))
+    >>= Except.toOption) |>.getD (Json.mkObj [])
+
+private def saveReusableLeanBlocks
+    (name : String)
+    (contents : Array (Verso.Doc.Block Verso.Genre.Manual)) :
+    StateT TraverseState IO Unit := do
+  modify fun st =>
+    st.set reusableLeanBlocksKey <|
+      (getReusableLeanTable st).setObjVal! name (toJson contents)
+
+private def loadReusableLeanBlocks?
+    (name : String) (state : TraverseState) :
+    Option (Except String
+      (Array (Verso.Doc.Block Verso.Genre.Manual))) := do
+  let table := getReusableLeanTable state
+  let json ← table.getObjVal? name |>.toOption
+  pure (fromJson? json)
+
 block_extension Block.savedLean (file : String) (source : String) where
   data := .arr #[.str file, .str source]
 
@@ -55,3 +78,94 @@ def savedComment : CodeBlockExpanderOf Unit
     let str := code.getString.trimAsciiEnd.copy
     let comment := s!"/-!\n{str}\n-/"
     ``(Block.other (Block.savedLean $(quote (← getFileName)) $(quote comment)) #[])
+
+/--
+Explicit display-math block. This avoids relying on Markdown `$` parsing in chapter text.
+-/
+@[code_block]
+def displayMath : CodeBlockExpanderOf Unit
+  | (), code => do
+    let math := code.getString.trimAscii.copy
+    ``(Block.para #[Verso.Doc.Inline.math Verso.Doc.MathMode.display $(quote math)])
+
+private def sharedLeanStringDesc [Monad m] [MonadError m] :
+    ValDesc m String := {
+  description := "snippet name"
+  signature := .String
+  get := fun
+    | .str s => pure s.getString
+    | other => throwError "Expected string, got {repr other}"
+}
+
+structure SharedLeanConfig extends InlineLean.LeanBlockConfig where
+  snippet : String
+
+def SharedLeanConfig.parse :
+    Verso.ArgParse DocElabM SharedLeanConfig :=
+  SharedLeanConfig.mk <$> InlineLean.LeanBlockConfig.parse <*>
+    Verso.ArgParse.named `snippet sharedLeanStringDesc false
+
+instance : Verso.ArgParse.FromArgs SharedLeanConfig DocElabM :=
+  ⟨SharedLeanConfig.parse⟩
+
+block_extension Block.sharedLean (snippet : String) where
+  data := .str snippet
+
+  traverse _ data contents := do
+    let .str snippet := data
+      | logError s!"Expected snippet name, got {data.compress}" *> pure none
+    saveReusableLeanBlocks snippet contents
+    pure none
+
+  toTeX := some fun _ _ _ _ _ => pure .empty
+  toHtml := some fun _ _ _ _ _ => pure .empty
+
+/--
+Lean code that is elaborated once, hidden at its definition site, and replayable later.
+-/
+@[code_block sharedLean]
+def sharedLean : CodeBlockExpanderOf SharedLeanConfig
+  | args, code => do
+    let inner : InlineLean.LeanBlockConfig :=
+      { args.toLeanBlockConfig with «show» := true }
+    let underlying ← InlineLean.lean inner code
+    ``(Block.other (Block.sharedLean $(quote args.snippet)) #[$underlying])
+
+structure ReplayLeanConfig where
+  snippet : String
+
+def ReplayLeanConfig.parse :
+    Verso.ArgParse DocElabM ReplayLeanConfig :=
+  ReplayLeanConfig.mk <$>
+    Verso.ArgParse.named `snippet sharedLeanStringDesc false
+
+instance : Verso.ArgParse.FromArgs ReplayLeanConfig DocElabM :=
+  ⟨ReplayLeanConfig.parse⟩
+
+block_extension Block.replayLean (snippet : String) where
+  data := .str snippet
+
+  traverse _ data _ := do
+    let .str snippet := data
+      | logError s!"Expected snippet name, got {data.compress}" *>
+        pure (some (.concat #[]))
+    match loadReusableLeanBlocks? snippet (← get) with
+    | some (.ok contents) =>
+      pure (some (.concat contents))
+    | some (.error err) =>
+      logError s!"Couldn't decode shared Lean snippet '{snippet}': {err}"
+      pure (some (.concat #[]))
+    | none =>
+      logError s!"Unknown shared Lean snippet '{snippet}'"
+      pure (some (.concat #[]))
+
+  toTeX := some fun _ _ _ _ _ => pure .empty
+  toHtml := some fun _ _ _ _ _ => pure .empty
+
+/--
+Render a previously shared Lean snippet without repeating its source text.
+-/
+@[code_block replayLean]
+def replayLean : CodeBlockExpanderOf ReplayLeanConfig
+  | args, _ => do
+    ``(Block.other (Block.replayLean $(quote args.snippet)) #[])
