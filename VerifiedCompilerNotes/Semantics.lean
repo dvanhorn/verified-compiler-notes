@@ -1,12 +1,13 @@
 import VersoManual
 import VerifiedCompilerNotes.Meta.Lean
+import VerifiedCompilerNotes.References
 
 open Verso.Genre Manual
 open Verso.Genre.Manual.InlineLean
 open VerifiedCompilerNotes
 
 
-#doc (Manual) "Basic Mechanics of Operational Semantics" =>
+#doc (Manual) "Basics of Operational Semantics" =>
 
 %%%
 tag := "chap-semantics"
@@ -541,8 +542,8 @@ inductive EStep : Expr → Expr → Prop where
 
 # Abstract Machine Semantics
 
-The abstract machine uses states of the form `(e, k)`, where
-`e` is the current control expression and `k` is a stack of frames.
+The abstract machine uses states of the form $`\langle e, k \rangle`, where
+$`e` is the current control expression and $`k` is a stack of frames.
 
 $$`
 \begin{gathered}
@@ -552,15 +553,36 @@ f ::= succF \mid predF \mid plusF_1(e) \mid plusF_2(n)
 \langle e, k \rangle \mapsto \langle e', k' \rangle
 \\[1em]
 \begin{aligned}
+\textsf{pushSucc}\quad
+  \langle succ(e), k \rangle
+  &\mapsto \langle e, succF :: k \rangle \\
+\textsf{pushPred}\quad
+  \langle pred(e), k \rangle
+  &\mapsto \langle e, predF :: k \rangle \\
 \textsf{pushPlusLeft}\quad
   \langle plus(e_1, e_2), k \rangle
   &\mapsto \langle e_1, plusF_1(e_2) :: k \rangle \\
+\textsf{pushTimesLeft}\quad
+  \langle times(e_1, e_2), k \rangle
+  &\mapsto \langle e_1, timesF_1(e_2) :: k \rangle \\
+\textsf{popSucc}\quad
+  \langle n, succF :: k \rangle
+  &\mapsto \langle n + 1, k \rangle \\
+\textsf{popPred}\quad
+  \langle n, predF :: k \rangle
+  &\mapsto \langle n - 1, k \rangle \\
 \textsf{popPlusLeft}\quad
   \langle n_1, plusF_1(e_2) :: k \rangle
   &\mapsto \langle e_2, plusF_2(n_1) :: k \rangle \\
 \textsf{popPlusRight}\quad
   \langle n_2, plusF_2(n_1) :: k \rangle
-  &\mapsto \langle n_1 + n_2, k \rangle
+  &\mapsto \langle n_1 + n_2, k \rangle \\
+\textsf{popTimesLeft}\quad
+  \langle n_1, timesF_1(e_2) :: k \rangle
+  &\mapsto \langle e_2, timesF_2(n_1) :: k \rangle \\
+\textsf{popTimesRight}\quad
+  \langle n_2, timesF_2(n_1) :: k \rangle
+  &\mapsto \langle n_1 * n_2, k \rangle
 \end{aligned}
 \end{gathered}
 `
@@ -721,3 +743,51 @@ and partly in the frame stack, so the measure has to account for both.
 
 ```replayLean (snippet := "machineMeasureDefs")
 ```
+
+# Historical Notes
+
+The styles of operational semantics surveyed in this chapter come from several
+different threads in the history of programming-language semantics.
+
+Plotkin's retrospective {citet plotkinOriginsSOS}[] points in particular to
+three pieces of background that matter for the later rule-based tradition.
+McCarthy's work introduced *abstract syntax* as a central semantic tool
+{citet mccarthyMathematicalScience}[]; Smullyan's work on formal systems gave a
+clear and flexible inference-rule notation {citet smullyanFirstOrderLogic}[];
+and Barendregt's thesis showed how reduction relations for the λ-calculus could
+be presented elegantly by rules rather than by more cumbersome definitions
+{citet barendregtThesis}[]. These ingredients are visible in much later
+operational-semantics practice.
+
+*Interpreter semantics.* The most direct ancestor of the interpreter-style
+presentation is the tradition of *definitional interpreters*: defining a
+language by writing an interpreter for it in some meta-language. A standard
+reference is {citet reynoldsDefinitionalInterpreters}[].
+
+*Natural semantics.* Big-step operational semantics is closely associated with
+the work {citet kahnNaturalSemantics}[], which popularized this style under
+the name "natural semantics." The basic idea is to define evaluation directly
+as a relation between phrases and their final results.
+
+*Structural operational semantics.* Small-step SOS is most closely associated
+with {citet plotkinSOS}[]. Plotkin's treatment made inference-rule
+presentations of one-step reduction a central method for defining programming
+languages, and it strongly shaped later PL practice.
+
+*Reduction semantics.* A closely related later presentation is *reduction
+semantics*, in which one separates basic redex-contraction rules from a grammar
+of evaluation contexts and then defines reduction by plugging a redex into an
+allowed context. This style is strongly associated with {citet felleisenHiebRevisedReport}[].
+For a modern tutorial treatment that pairs well
+with these notes, see also {citet huttonSemantics123}[].
+
+*Abstract machines.* Abstract machine semantics has older roots. A foundational
+example is {citet landinMechanicalEvaluation}[], which introduced the SECD
+machine. Plotkin later identified abstract machines such as SECD, together
+with the Vienna school's abstract interpreting machines, as important
+influences on the development of SOS; see {citet plotkinOriginsSOS}[].
+
+These styles are not competitors so much as complementary views of the same
+phenomenon. An interpreter emphasizes direct execution, natural semantics
+emphasizes whole-program evaluation, SOS emphasizes individual computation
+steps, and abstract machines make control state explicit.
