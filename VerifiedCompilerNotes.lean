@@ -10,6 +10,7 @@ import VerifiedCompilerNotes.Papers
 
 -- This is a chapter that's included
 import VerifiedCompilerNotes.Semantics
+import VerifiedCompilerNotes.CoreFunctionalLanguage
 
 -- This gets access to most of the manual genre (which is also useful for textbooks)
 open Verso.Genre Manual
@@ -74,6 +75,7 @@ When named, a code block can be rendered back with {lean}`leanOutput`:
 ```
 
 {include 1 VerifiedCompilerNotes.Semantics}
+{include 1 VerifiedCompilerNotes.CoreFunctionalLanguage}
 
 # Notes on Modeling Compilation
 

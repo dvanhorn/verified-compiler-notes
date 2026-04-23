@@ -99,4 +99,31 @@ def huttonSemantics123 : Article where
   pages := none
   url := some "https://www.cambridge.org/core/journals/journal-of-functional-programming/article/programming-language-semantics-its-easy-as-123/EC2C046CF94382B3B408036B84475DC7"
 
+def taitIntensionalInterpretations : Article where
+  title := inlines!"Intensional Interpretations of Functionals of Finite Type I"
+  authors := #[inlines!"W. W. Tait"]
+  journal := inlines!"The Journal of Symbolic Logic"
+  year := 1967
+  month := none
+  volume := inlines!"32"
+  number := inlines!"2"
+  pages := some (198, 212)
+  url := some "https://www.cambridge.org/core/journals/journal-of-symbolic-logic/article/intensional-interpretations-of-functionals-of-finite-type-i/9F30EA199783BD797DF6FA44525F114E"
+
+def timanyLogicalTypeSoundness : Article where
+  title := inlines!"A Logical Approach to Type Soundness"
+  authors := #[
+    inlines!"Amin Timany",
+    inlines!"Robbert Krebbers",
+    inlines!"Derek Dreyer",
+    inlines!"Lars Birkedal"
+  ]
+  journal := inlines!"Journal of the ACM"
+  year := 2024
+  month := none
+  volume := inlines!"71"
+  number := inlines!"6"
+  pages := none
+  url := some "https://doi.org/10.1145/3676954"
+
 end VerifiedCompilerNotes
